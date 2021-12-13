@@ -8,6 +8,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.AssetManager;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import io.flutter.embedding.engine.FlutterEngine;
 import io.flutter.embedding.engine.dart.DartExecutor;
@@ -152,6 +154,44 @@ public class FlutterBackgroundExecutor implements MethodCallHandler {
     }
 
     Log.i(TAG, "Starting AlarmService...");
+    Handler mainHandler = new Handler(Looper.getMainLooper());
+    Runnable myRunnable = () -> {
+      io.flutter.view.FlutterMain.startInitialization(context);
+      io.flutter.view.FlutterMain.ensureInitializationCompleteAsync(
+        context,
+        null,
+        mainHandler,
+        () -> {
+          String appBundle = io.flutter.view.FlutterMain.findAppBundlePath();
+          AssetManager assets = context.getAssets();
+          if (!isRunning()) {
+            backgroundFlutterEngine = new FlutterEngine(context);
+            FlutterCallbackInformation flutterCallback =
+              FlutterCallbackInformation.lookupCallbackInformation(
+                callbackHandle);
+            if (flutterCallback == null) {
+              Log.e(TAG, "Fatal: failed to find callback");
+              return;
+            }
+
+            DartExecutor executor = backgroundFlutterEngine.getDartExecutor();
+            initializeMethodChannel(executor);
+            DartExecutor.DartCallback dartCallback = new DartExecutor.DartCallback(
+              assets, appBundle, flutterCallback);
+
+            executor.executeDartCallback(dartCallback);
+
+            if (pluginRegistrantCallback != null) {
+              pluginRegistrantCallback.registerWith(
+                new ShimPluginRegistry(backgroundFlutterEngine));
+            }
+          }
+        }
+      );
+    };
+    mainHandler.post(myRunnable);
+
+    /*Log.i(TAG, "Starting AlarmService...");
     String appBundlePath = FlutterMain.findAppBundlePath(context);
     AssetManager assets = context.getAssets();
     if (appBundlePath != null && !isRunning()) {
@@ -178,7 +218,7 @@ public class FlutterBackgroundExecutor implements MethodCallHandler {
       if (pluginRegistrantCallback != null) {
         pluginRegistrantCallback.registerWith(new ShimPluginRegistry(backgroundFlutterEngine));
       }
-    }
+    }*/
   }
 
   /**
